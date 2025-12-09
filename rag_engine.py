@@ -3,11 +3,15 @@
 import os
 from dotenv import load_dotenv
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.document_loaders import UnstructuredExcelLoader
-from langchain.embeddings import HuggingFaceEmbeddings
-from langchain.vectorstores import FAISS
-from langchain.prompts import PromptTemplate
-from langchain.chains import RetrievalQA
+
+# --- COMMUNITY IMPORTS ---
+from langchain_community.document_loaders import UnstructuredExcelLoader
+from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_community.vectorstores import FAISS
+
+# --- CORE/EXPRESSION LANGUAGE IMPORTS ---
+from langchain_core.prompts import PromptTemplate # Fixed
+from langchain_classic.chains import RetrievalQA
 
 load_dotenv()
 gemini_key = os.getenv("gemini_key")
@@ -85,3 +89,4 @@ def ask_bot(query):
         return "I don't know. Please wait for the Human reply."
 
     return answer
+

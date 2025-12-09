@@ -1,55 +1,51 @@
 # rag_engine.py
-
 import os
 from dotenv import load_dotenv
-from langchain_google_genai import ChatGoogleGenerativeAI
 
-# --- COMMUNITY IMPORTS ---
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_community.document_loaders import UnstructuredExcelLoader
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
 
-# --- CORE/EXPRESSION LANGUAGE IMPORTS ---
-from langchain_core.prompts import PromptTemplate # Fixed
-from langchain_classic.chains import RetrievalQA
+from langchain.prompts import PromptTemplate
+from langchain.chains import RetrievalQA
 
 load_dotenv()
 gemini_key = os.getenv("gemini_key")
 
-# ---- Initialize LLM ----
+
+# ---------------- LLM ----------------
 llm = ChatGoogleGenerativeAI(
     model="gemini-2.5-flash",
     google_api_key=gemini_key
 )
 
-# ---- Load Excel ----
-loader = UnstructuredExcelLoader("FAQ_file.xlsx")
-data = loader.load()
-texts = [doc.page_content for doc in data]
+# ---------------- LOAD EXCEL ----------------
+excel_path = "faq.xlsx"  # must be in repo root
 
-# ---- Embeddings ----
-embedding_model = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+loader = UnstructuredExcelLoader(excel_path)
+docs = loader.load()
+texts = [d.page_content for d in docs]
 
-# ---- Vector Store ----
-vector_path = "L&H-FAQ-POC"
+# ---------------- VECTOR DB ----------------
+vector_path = "faiss_index"
 
-# Create vector DB only once
+embedding_model = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+
 if not os.path.exists(vector_path):
-    vector_db = FAISS.from_texts(texts, embedding_model)
-    vector_db.save_local(vector_path)
+    db = FAISS.from_texts(texts, embedding_model)
+    db.save_local(vector_path)
+else:
+    db = FAISS.load_local(vector_path, embedding_model, allow_dangerous_deserialization=True)
 
-db = FAISS.load_local(vector_path, embedding_model, allow_dangerous_deserialization=True)
 retriever = db.as_retriever(search_kwargs={"k": 3})
 
-# ---- Prompt ----
-prompt_template = PromptTemplate(
+# ---------------- PROMPT ----------------
+prompt = PromptTemplate(
+    input_variables=["context", "question"],
     template="""
-You are an intelligent FAQ assistant.
-Rules:
-1. Use ONLY the information in the context.
-2. If context is irrelevant or empty, answer:
-   "I don't know. Please wait for the Human reply."
-3. Never guess or hallucinate.
+You are an intelligent FAQ assistant for Life & Half.
+Use ONLY the context provided. Do not guess.
 
 Context:
 {context}
@@ -58,35 +54,28 @@ User Question:
 {question}
 
 Answer:
-""",
-    input_variables=['context', 'question']
+"""
 )
 
 chain = RetrievalQA.from_chain_type(
     llm=llm,
     retriever=retriever,
     return_source_documents=True,
-    input_key='question',
-    chain_type="stuff",
-    chain_type_kwargs={"prompt": prompt_template}
+    chain_type_kwargs={"prompt": prompt}
 )
 
 
 def ask_bot(query):
-    """Main RAG function for Flask app"""
-    response = chain({"question": query})
-    answer = response["result"]
-    sources = response["source_documents"]
+    resp = chain({"query": query})
+    answer = resp["result"]
 
-    context_text = " ".join([s.page_content for s in sources]).strip()
+    context = " ".join([d.page_content for d in resp["source_documents"]]).strip()
 
-    # IDK detection
-    if context_text == "" or len(context_text) < 10:
+    if context == "" or len(context) < 10:
         return "I don't know. Please wait for the Human reply."
 
-    hallucination_phrases = ["i am not sure", "cannot answer", "as an ai", "no information"]
-    if any(x in answer.lower() for x in hallucination_phrases):
+    bad_words = ["i don't know", "not sure", "cannot", "no information"]
+    if any(b in answer.lower() for b in bad_words):
         return "I don't know. Please wait for the Human reply."
 
     return answer
-

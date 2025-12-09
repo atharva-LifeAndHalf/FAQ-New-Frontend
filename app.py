@@ -1,104 +1,84 @@
-# app.py
-
 from flask import Flask, render_template, request, jsonify
 from rag_engine import ask_bot
 import time
 import random
+import os
 
 app = Flask(__name__)
 
-conversation_history = []
-last_message_time = time.time()
+conversation = []
+last_time = time.time()
+TIMEOUT = 30
 
-CONVERSATION_TIMEOUT = 30  # seconds
 
-
-def reset_if_timeout():
-    global conversation_history, last_message_time
-    if time.time() - last_message_time > CONVERSATION_TIMEOUT:
-        conversation_history = []
+def reset_if_inactive():
+    global conversation
+    time_diff = time.time() - last_time
+    if time_diff > TIMEOUT:
+        conversation = []
 
 
 @app.route("/")
-def home():
+def index():
     return render_template("index.html")
+
 
 @app.route("/ask", methods=["POST"])
 def ask():
-    global conversation_history, last_message_time
+    global conversation, last_time
 
-    reset_if_timeout()
+    reset_if_inactive()
 
-    user_text = request.form["message"].strip().lower()
-    last_message_time = time.time()
+    user_msg = request.form["message"].strip()
+    last_time = time.time()
 
-    conversation_history.append({"role": "user", "text": user_text})
+    conversation.append({"role": "user", "text": user_msg})
 
-    # -----------------------------
-    # GREETING LOGIC
-    # -----------------------------
-    greeting_words = ["hi", "hii", "hiii", "hello", "hey", "heyy", "yo", "hola", "hey there"]
-
-    greeting_replies = [
-        "Hey! How can I help you today? 😊",
-        "Hello! What would you like to know?",
-        "Hi there! How can I assist you?",
-        "Hey! I'm here to help.",
-        "Hello! Feel free to ask me anything.",
-        "Hi! How can I support you today?",
+    greetings = ["hi", "hello", "hey", "yo", "hola"]
+    greet_replies = [
+        "Hello! How can I assist you today?",
+        "Hi there! 😊 What can I help you with?",
+        "Hey! Ask me anything."
     ]
 
-    if user_text in greeting_words:
-        bot_reply = random.choice(greeting_replies)
-        conversation_history.append({"role": "bot", "text": bot_reply})
-        return jsonify({"reply": bot_reply})
+    if user_msg.lower() in greetings:
+        bot = random.choice(greet_replies)
+        conversation.append({"role": "bot", "text": bot})
+        return jsonify({"reply": bot})
 
-    # -----------------------------
-    # QUICK RESPONSE LOGIC
-    # -----------------------------
-    quick_words = ["ok", "okay", "k", "okie", "cool", "great", "thanks", "thank you", "nice"]
-
-    quick_replies = [
-        "Okay cool 😊",
-        "Great! Happy to help!",
-        "Awesome!",
-        "Perfect!",
-        "Glad to help!",
-        "Thank you too!",
+    short_words = ["ok", "okay", "k", "cool", "nice", "thanks", "thank you"]
+    short_replies = [
+        "Okay cool! 😊",
+        "Great!",
         "Sure, anytime!",
+        "Awesome!"
     ]
 
-    if user_text in quick_words:
-        bot_reply = random.choice(quick_replies)
-        conversation_history.append({"role": "bot", "text": bot_reply})
-        return jsonify({"reply": bot_reply})
+    if user_msg.lower() in short_words:
+        bot = random.choice(short_replies)
+        conversation.append({"role": "bot", "text": bot})
+        return jsonify({"reply": bot})
 
-    # -----------------------------
-    # NORMAL RAG RESPONSE
-    # -----------------------------
-    bot_raw_reply = ask_bot(user_text)
+    # Normal RAG response
+    bot_raw = ask_bot(user_msg)
 
-    # If it's an IDK message, return as is
-    if bot_raw_reply.startswith("I don't"):
-        final_reply = bot_raw_reply
-    else:
-        final_reply = bot_raw_reply
-
-    # Add natural endings
-    natural_endings = [
+    ending = random.choice([
         "",
         " Let me know if you want to know more!",
-        " Hope this helps!",
-        " Feel free to ask anything else!",
-        " Happy to explain more if needed!",
-    ]
+        " Happy to help!",
+        " Feel free to ask anything!"
+    ])
 
-    if not final_reply.startswith("I don't") and len(final_reply) < 200:
-        final_reply += random.choice(natural_endings)
+    if bot_raw.startswith("I don't"):
+        final = bot_raw
+    else:
+        final = bot_raw + ending
 
-    conversation_history.append({"role": "bot", "text": final_reply})
-    return jsonify({"reply": final_reply})
+    conversation.append({"role": "bot", "text": final})
+    return jsonify({"reply": final})
 
 
+# -------- Render PORT binding --------
 if __name__ == "__main__":
-    app.run(debug=True)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)

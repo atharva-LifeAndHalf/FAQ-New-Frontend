@@ -21,7 +21,7 @@ llm = ChatGoogleGenerativeAI(
 )
 
 # ---------------- LOAD EXCEL ----------------
-excel_path = "faq.xlsx"  # must be in repo root
+excel_path = "FAQ_file.xlsx"  # must be in repo root
 
 loader = UnstructuredExcelLoader(excel_path)
 docs = loader.load()
@@ -79,3 +79,4 @@ def ask_bot(query):
         return "I don't know. Please wait for the Human reply."
 
     return answer
+
